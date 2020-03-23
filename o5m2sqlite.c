@@ -1,15 +1,10 @@
 /*
 ** o5m2sqlite
 **
-** Import of OpenStreetMap data in o5m format into a SQLite database
+** Converts OpenStreetMap data in binary o5m format into a SQLite database
 **
 ** Basic sources used from https://github.com/Rotfuss/o5m2sqlite
 ** (based on an example in README.md from https://github.com/bigr/o5mreader)
-**
-** Hints for compiling:
-** Required files in the same directory:
-** o5mreader.c o5mreader.h from https://github.com/bigr/o5mreader
-** sqlite3.c sqlite3.h from the sqlite-amalgamation https://www.sqlite.org/download.html
 **
 */
 #include <stdio.h>
@@ -18,6 +13,8 @@
 
 #include "o5mreader.c"
 #include "sqlite3.h"
+
+#define o5m2sqlite_version "0.1"
 
 #define db_create_tables \
 "CREATE TABLE nodes (node_id INTEGER PRIMARY KEY,lat REAL,lon REAL);\n"\
@@ -55,14 +52,13 @@
 #define ins_rel_member "INSERT INTO relation_members (relation_id,type,ref,role) VALUES (?,?,?,?);"
 
 #define help \
-"o5m2sqlite\n\n"\
-"converts openstreetmap data to sqlite database files.\n"\
-"Input file must be a binary file in the o5m format.\n\n"\
+"o5m2sqlite (version " o5m2sqlite_version ")\n\n"\
+"Converts OpenStreetMap data in binary o5m format into a SQLite database.\n\n"\
 "Usage:\n"\
 "o5m2sqlite in.o5m out.sqlite3\tconvert in.o5m to out.sqlite3\n"\
-"o5m2sqlite --schema\t\tshow the resulting sqlite database schema.\n\n"\
+"o5m2sqlite --schema\t\tshow the resulting sqlite database schema\n\n"\
 "Tillmann Stuebler, 12 August 2016\n"\
-"Herbert Glaeser, 22 March 2020\n\n"\
+"Herbert Glaeser, 23 March 2020\n\n"\
 "compile time: " __DATE__ " " __TIME__ "\n"\
 "gcc: " __VERSION__  "\n"\
 "SQLite version: " SQLITE_VERSION "\n"

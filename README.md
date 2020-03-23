@@ -1,7 +1,6 @@
 # o5m2sqlite
 
-Converts openstreetmap data in the binary o5m format
-to a SQLite database file.
+Converts OpenStreetMap data in binary o5m format into a SQLite database
 
 Usage:  
 ./o5m2sqlite input.o5m output.sqlite3

@@ -51,11 +51,10 @@ _sqlite3.c_ _sqlite3.h_ from the sqlite-amalgamation [https://www.sqlite.org/dow
 > Unfortunately there are errors in the o5mreader files.
 > Therefore there are additional corrected files in the repository.
 
+See [How To Compile SQLite](https://www.sqlite.org/howtocompile.html)
+
 Linux:
 
-    gcc -DSQLITE_ENABLE_RTREE o5m2sqlite.c sqlite3.c -lpthread -ldl -O2 -o o5m2sqlite -s
+    gcc -O2 -s -DSQLITE_ENABLE_RTREE o5m2sqlite.c sqlite3.c -lpthread -ldl -o o5m2sqlite
 
-Windows:
-
-    gcc -DSQLITE_ENABLE_RTREE o5m2sqlite.c sqlite3.c -O2 -o o5m2sqlite -s
 

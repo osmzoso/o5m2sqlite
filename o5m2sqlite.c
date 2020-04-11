@@ -4,7 +4,7 @@
 ** Converts OpenStreetMap data in binary o5m format into a SQLite database
 **
 ** Fork from https://github.com/Rotfuss/o5m2sqlite Tillmann Stuebler, 12 August 2016
-** (based on an example in README.md from https://github.com/bigr/o5mreader)
+** (based on the example in README.md from https://github.com/bigr/o5mreader)
 **
 */
 #include <stdio.h>
@@ -14,9 +14,9 @@
 #include "o5mreader.c"
 #include "sqlite3.h"
 
-#define o5m2sqlite_version "0.1a"
+#define O5M2SQLITE_VERSION "0.2 alpha"
 
-#define o5m2sqlite_create_tables \
+#define O5M2SQLITE_CREATE_TABLES \
 "CREATE TABLE nodes (node_id INTEGER PRIMARY KEY,lat REAL,lon REAL);\n" \
 "CREATE TABLE node_tags (node_id INTEGER,key TEXT,value TEXT);\n" \
 "CREATE TABLE way_tags (way_id INTEGER,key TEXT,value TEXT);\n" \
@@ -24,7 +24,7 @@
 "CREATE TABLE relation_tags (relation_id INTEGER,key TEXT,value TEXT);\n" \
 "CREATE TABLE relation_members (relation_id INTEGER,type TEXT,ref INTEGER,role TEXT,local_order INTEGER);\n"
 
-#define o5m2sqlite_create_indexes \
+#define O5M2SQLITE_CREATE_INDEXES \
 "CREATE INDEX node_tags__node_id ON node_tags ( node_id );\n" \
 "CREATE INDEX node_tags__key ON node_tags ( key );\n" \
 "CREATE INDEX way_tags__way_id ON way_tags ( way_id );\n" \
@@ -34,8 +34,8 @@
 "CREATE INDEX relation_tags__relation_id ON relation_tags ( relation_id );\n" \
 "CREATE INDEX relation_tags__key ON relation_tags ( key );\n" \
 "CREATE INDEX relation_members__relation_id ON relation_members ( relation_id );\n" \
-"CREATE INDEX relation_members__type ON relation_members ( type, ref );\n" \
-"-- R*Tree index on all ways with key='highway'\n" \
+"CREATE INDEX relation_members__type ON relation_members ( type, ref );\n\n" \
+"-- Spatial R*Tree index on all ways with key='highway'\n" \
 "CREATE VIRTUAL TABLE rtree_way_highway USING rtree( way_id,min_lat, max_lat,min_lon, max_lon );\n" \
 "INSERT INTO rtree_way_highway (way_id,min_lat,       max_lat,       min_lon,       max_lon)\n" \
 "SELECT                way_tags.way_id,min(nodes.lat),max(nodes.lat),min(nodes.lon),max(nodes.lon)\n" \
@@ -45,15 +45,15 @@
 "WHERE way_tags.key='highway'\n" \
 "GROUP BY way_tags.way_id;\n"
 
-#define ins_node       "INSERT INTO nodes (node_id,lat,lon) VALUES (?,?,?);"
-#define ins_node_tag   "INSERT INTO node_tags (node_id,key,value) VALUES (?,?,?);"
-#define ins_way_tag    "INSERT INTO way_tags (way_id,key,value) VALUES (?,?,?);"
-#define ins_way_node   "INSERT INTO way_nodes (way_id,local_order,node_id) VALUES (?,?,?);"
-#define ins_rel_tag    "INSERT INTO relation_tags (relation_id,key,value) VALUES (?,?,?);"
-#define ins_rel_member "INSERT INTO relation_members (relation_id,type,ref,role) VALUES (?,?,?,?);"
+#define ins_node       "INSERT INTO nodes (node_id,lat,lon) VALUES (?1,?2,?3);"
+#define ins_node_tag   "INSERT INTO node_tags (node_id,key,value) VALUES (?1,?2,?3);"
+#define ins_way_tag    "INSERT INTO way_tags (way_id,key,value) VALUES (?1,?2,?3);"
+#define ins_way_node   "INSERT INTO way_nodes (way_id,local_order,node_id) VALUES (?1,?2,?3);"
+#define ins_rel_tag    "INSERT INTO relation_tags (relation_id,key,value) VALUES (?1,?2,?3);"
+#define ins_rel_member "INSERT INTO relation_members (relation_id,type,ref,role) VALUES (?1,?2,?3,?4);"
 
-#define help \
-"o5m2sqlite (Version " o5m2sqlite_version ")\n\n" \
+#define O5M2SQLITE_HELP \
+"o5m2sqlite (Version " O5M2SQLITE_VERSION ")\n\n" \
 "Converts OpenStreetMap data in binary o5m format into a SQLite database.\n" \
 "(SQLite Version " SQLITE_VERSION ")\n\n" \
 "Usage:\n" \
@@ -75,48 +75,51 @@ int main(int narg, char * arg[])
     char *role;
     FILE * f;
     uint64_t local_order;
+    uint64_t cnt_ds;
     
     // sqlite
     sqlite3 *db;
+    char *zErrMsg = 0;
+    int rc;
     sqlite3_stmt *stmt_node, *stmt_node_tag, *stmt_way_tag, *stmt_way_node, *stmt_rel_tag, *stmt_rel_member;
-    int r;
     
     if((narg==2) && strcmp(arg[1],"--schema")==0) {
-        printf("\n%s\n%s\n\n", o5m2sqlite_create_tables, o5m2sqlite_create_indexes);
-        return 0;
+        fprintf(stderr, "\n%s\n%s\n\n", O5M2SQLITE_CREATE_TABLES, O5M2SQLITE_CREATE_INDEXES);
+        return(0);
     }
     
     if(narg<3) {
-        printf(help);
-        return 0;
+        fprintf(stderr, O5M2SQLITE_HELP );
+        return(1);
     }
     
     // open o5m file
     f = fopen(arg[1],"rb");
-    if(f==NULL) {
-        printf("Could not open o5m file!\n");
-        return -2;
+    if( f==NULL ) {
+        fprintf(stderr, "Can't open o5m file %s\n", arg[1]);
+        return(1);
     }
     
     // open sqlite database
-    r=sqlite3_open(arg[2],&db);
-    if(r != SQLITE_OK) {
-        printf("Could not open sqlite3 database!\n");
+    rc = sqlite3_open(arg[2], &db);
+    if( rc!=SQLITE_OK ) {
+        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
         sqlite3_close(db);
-        return -3;
+        return(1);
     }
     
-    sqlite3_exec(db,"PRAGMA synchronous = OFF",NULL,NULL,NULL);
-    sqlite3_exec(db,"PRAGMA journal_mode = MEMORY",NULL,NULL,NULL);
+    rc = sqlite3_exec(db,"PRAGMA synchronous = OFF",NULL,NULL,NULL);
+    rc = sqlite3_exec(db,"PRAGMA journal_mode = MEMORY",NULL,NULL,NULL);
     
-    sqlite3_exec(db,"BEGIN TRANSACTION",NULL,NULL,NULL);
+    rc = sqlite3_exec(db,"BEGIN TRANSACTION",NULL,NULL,NULL);
     
     // create tables
-    r=sqlite3_exec(db,o5m2sqlite_create_tables,NULL,NULL,NULL);
-    if(r!=SQLITE_OK) {
-        printf("Could not create tables!\n");
+    fprintf(stderr,"create tables...\n");
+    rc = sqlite3_exec(db,O5M2SQLITE_CREATE_TABLES,NULL,NULL,NULL);
+    if( rc!=SQLITE_OK ) {
+        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
         sqlite3_close(db);
-        return -4;
+        return(1);
     }
     
     // prepare statements
@@ -128,7 +131,7 @@ int main(int narg, char * arg[])
         (sqlite3_prepare_v2(db,ins_rel_member,-1,&stmt_rel_member,NULL)!=SQLITE_OK)) {
         printf("Could not prepare statememts!\n");
         sqlite3_close(db);
-        return -5;
+        return(1);
     }
     
     o5mreader_open(&reader,f);
@@ -249,20 +252,27 @@ int main(int narg, char * arg[])
                 }
                 break;
         } // end of switch-case
+        
+        cnt_ds++;
+        if( cnt_ds>1000000 ) {
+            fprintf(stderr,"o");
+            cnt_ds = 0;
+        }
     } // end of o5m elements iteration
     
     // close o5m file
     fclose(f);
 
     // finish transaction
-    sqlite3_exec(db,"COMMIT",NULL,NULL,NULL);
+    rc = sqlite3_exec(db,"COMMIT",NULL,NULL,NULL);
     
     // create sqlite indexes
-    r=sqlite3_exec(db,o5m2sqlite_create_indexes,NULL,NULL,NULL);
-    if(r!=SQLITE_OK) {
-        printf("Could not create indexes!\n");
+    fprintf(stderr,"\ncreate indexes...\n");
+    rc = sqlite3_exec(db,O5M2SQLITE_CREATE_INDEXES,NULL,NULL,NULL);
+    if( rc!=SQLITE_OK ) {
+        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
         sqlite3_close(db);
-        return -7;
+        return(1);
     }
     
     // close sqlite database

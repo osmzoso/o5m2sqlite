@@ -14,7 +14,7 @@
 #include "o5mreader.c"
 #include "sqlite3.h"
 
-#define O5M2SQLITE_VERSION "0.2 alpha"
+#define O5M2SQLITE_VERSION "0.3 alpha"
 
 #define O5M2SQLITE_CREATE_TABLES \
 "CREATE TABLE nodes (node_id INTEGER PRIMARY KEY,lat REAL,lon REAL);\n" \
@@ -61,6 +61,16 @@
 "o5m2sqlite --schema\t\tshow the resulting sqlite database schema\n\n" \
 "(compile time: " __DATE__ " " __TIME__ "  gcc " __VERSION__ ")\n"
 
+/* sqlite db handler */
+sqlite3 *db;
+
+static void check_rc( int rc ) {
+    if( rc!=SQLITE_OK ) {
+        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+        sqlite3_close(db);
+        exit(1);
+    }
+}
 
 int main(int narg, char * arg[])
 {
@@ -78,9 +88,6 @@ int main(int narg, char * arg[])
     uint64_t cnt_ds;
     
     // sqlite
-    sqlite3 *db;
-    char *zErrMsg = 0;
-    int rc;
     sqlite3_stmt *stmt_node, *stmt_node_tag, *stmt_way_tag, *stmt_way_node, *stmt_rel_tag, *stmt_rel_member;
     
     if((narg==2) && strcmp(arg[1],"--schema")==0) {
@@ -101,38 +108,24 @@ int main(int narg, char * arg[])
     }
     
     // open sqlite database
-    rc = sqlite3_open(arg[2], &db);
-    if( rc!=SQLITE_OK ) {
-        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
-        sqlite3_close(db);
-        return(1);
-    }
+    check_rc( sqlite3_open(arg[2], &db) );
     
-    rc = sqlite3_exec(db,"PRAGMA synchronous = OFF",NULL,NULL,NULL);
-    rc = sqlite3_exec(db,"PRAGMA journal_mode = MEMORY",NULL,NULL,NULL);
+    check_rc( sqlite3_exec(db,"PRAGMA synchronous = OFF",NULL,NULL,NULL) );
+    check_rc( sqlite3_exec(db,"PRAGMA journal_mode = MEMORY",NULL,NULL,NULL) );
     
-    rc = sqlite3_exec(db,"BEGIN TRANSACTION",NULL,NULL,NULL);
+    check_rc( sqlite3_exec(db,"BEGIN TRANSACTION",NULL,NULL,NULL) );
     
     // create tables
     fprintf(stderr,"create tables...\n");
-    rc = sqlite3_exec(db,O5M2SQLITE_CREATE_TABLES,NULL,NULL,NULL);
-    if( rc!=SQLITE_OK ) {
-        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
-        sqlite3_close(db);
-        return(1);
-    }
+    check_rc( sqlite3_exec(db,O5M2SQLITE_CREATE_TABLES,NULL,NULL,NULL) );
     
     // prepare statements
-    if ((sqlite3_prepare_v2(db,ins_node,-1,&stmt_node,NULL)!=SQLITE_OK) ||
-        (sqlite3_prepare_v2(db,ins_node_tag,-1,&stmt_node_tag,NULL)!=SQLITE_OK) ||
-        (sqlite3_prepare_v2(db,ins_way_tag,-1,&stmt_way_tag,NULL)!=SQLITE_OK) ||
-        (sqlite3_prepare_v2(db,ins_way_node,-1,&stmt_way_node,NULL)!=SQLITE_OK) ||
-        (sqlite3_prepare_v2(db,ins_rel_tag,-1,&stmt_rel_tag,NULL)!=SQLITE_OK) ||
-        (sqlite3_prepare_v2(db,ins_rel_member,-1,&stmt_rel_member,NULL)!=SQLITE_OK)) {
-        printf("Could not prepare statememts!\n");
-        sqlite3_close(db);
-        return(1);
-    }
+    check_rc( sqlite3_prepare_v2(db,ins_node,-1,&stmt_node,NULL) );
+    check_rc( sqlite3_prepare_v2(db,ins_node_tag,-1,&stmt_node_tag,NULL) );
+    check_rc( sqlite3_prepare_v2(db,ins_way_tag,-1,&stmt_way_tag,NULL) );
+    check_rc( sqlite3_prepare_v2(db,ins_way_node,-1,&stmt_way_node,NULL) );
+    check_rc( sqlite3_prepare_v2(db,ins_rel_tag,-1,&stmt_rel_tag,NULL) );
+    check_rc( sqlite3_prepare_v2(db,ins_rel_member,-1,&stmt_rel_member,NULL) );
     
     o5mreader_open(&reader,f);
     
@@ -264,16 +257,11 @@ int main(int narg, char * arg[])
     fclose(f);
 
     // finish transaction
-    rc = sqlite3_exec(db,"COMMIT",NULL,NULL,NULL);
+    check_rc( sqlite3_exec(db,"COMMIT",NULL,NULL,NULL) );
     
     // create sqlite indexes
     fprintf(stderr,"\ncreate indexes...\n");
-    rc = sqlite3_exec(db,O5M2SQLITE_CREATE_INDEXES,NULL,NULL,NULL);
-    if( rc!=SQLITE_OK ) {
-        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
-        sqlite3_close(db);
-        return(1);
-    }
+    check_rc( sqlite3_exec(db,O5M2SQLITE_CREATE_INDEXES,NULL,NULL,NULL) );
     
     // close sqlite database
     sqlite3_close(db);
